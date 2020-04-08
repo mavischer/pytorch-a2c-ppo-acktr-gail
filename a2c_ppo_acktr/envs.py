@@ -56,6 +56,8 @@ def make_env(env_id, seed, rank, log_dir, allow_early_resets):
         if is_atari:
             if len(env.observation_space.shape) == 3:
                 env = wrap_deepmind(env)
+        elif "boxworld" in env_id:
+            pass
         elif len(env.observation_space.shape) == 3:
             raise NotImplementedError(
                 "CNN models work only for atari,\n"
@@ -95,14 +97,12 @@ def make_vec_envs(env_name,
             envs = VecNormalize(envs, ret=False)
         else:
             envs = VecNormalize(envs, gamma=gamma)
-
     envs = VecPyTorch(envs, device)
 
     if num_frame_stack is not None:
         envs = VecPyTorchFrameStack(envs, num_frame_stack, device)
     elif len(envs.observation_space.shape) == 3:
         envs = VecPyTorchFrameStack(envs, 4, device)
-
     return envs
 
 
