@@ -15,12 +15,14 @@ from a2c_ppo_acktr import algo, utils
 from a2c_ppo_acktr.algo import gail
 from a2c_ppo_acktr.arguments import get_args
 from a2c_ppo_acktr.envs import make_vec_envs
-from a2c_ppo_acktr.model import Policy
+from a2c_ppo_acktr.model import Policy, DRRLBase
 from a2c_ppo_acktr.storage import RolloutStorage
 from evaluation import evaluate
+from baselines.common import plot_util
 
 
 def main():
+    useAttArch = True
     args = get_args()
 
     torch.manual_seed(args.seed)
@@ -40,11 +42,23 @@ def main():
 
     envs = make_vec_envs(args.env_name, args.seed, args.num_processes,
                          args.gamma, args.log_dir, device, False, num_frame_stack=1) #default is stacking 4 frames
-
-    actor_critic = Policy(
-        envs.observation_space.shape,
-        envs.action_space,
-        base_kwargs={'recurrent': args.recurrent_policy})
+    if useAttArch:
+        base_kwargs = {'recurrent': False,
+                       "w": 7, "h": 7, "pad": True,
+                       "n_f_conv1": 12, "n_f_conv2": 24,
+                       "att_emb_size": 64, "n_heads": 2,
+                       "n_att_stack": 2, "n_fc_layers": 4,
+                       "baseline_mode": False}
+        actor_critic = Policy(
+            envs.observation_space.shape,
+            envs.action_space,
+            base=DRRLBase,
+            base_kwargs=base_kwargs)
+    else:
+        actor_critic = Policy(
+            envs.observation_space.shape,
+            envs.action_space,
+            base_kwargs={'recurrent': args.recurrent_policy})
     actor_critic.to(device)
 
     if args.algo == 'a2c':
