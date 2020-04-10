@@ -149,6 +149,16 @@ def get_args():
         action='store_true',
         default=False,
         help='use a linear schedule on the learning rate')
+    parser.add_argument(
+        '--attarch',
+        action='store_true',
+        default=False,
+        help='use attentional network architecture in base')
+    parser.add_argument(
+        '--attarchbaseline',
+        action='store_true',
+        default=False,
+        help='use attentional network\'s convolutional baseline in base')
     args = parser.parse_args()
 
     args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -157,5 +167,8 @@ def get_args():
     if args.recurrent_policy:
         assert args.algo in ['a2c', 'ppo'], \
             'Recurrent policy is not implemented for ACKTR'
+
+    if args.attarch and args.attarchbaseline:
+        raise ValueError("attarch and attarchbaseline can't both be true, choose either of them")
 
     return args

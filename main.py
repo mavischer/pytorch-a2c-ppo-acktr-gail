@@ -22,7 +22,6 @@ from baselines.common import plot_util
 
 
 def main():
-    useAttArch = True
     args = get_args()
 
     torch.manual_seed(args.seed)
@@ -51,13 +50,24 @@ def main():
 
     else:
         start_upd = 0
-        if useAttArch:
+        if args.attarch:
             base_kwargs = {'recurrent': False,
                            "w": 7, "h": 7, "pad": True,
                            "n_f_conv1": 12, "n_f_conv2": 24,
                            "att_emb_size": 64, "n_heads": 2,
                            "n_att_stack": 2, "n_fc_layers": 4,
                            "baseline_mode": False}
+            actor_critic = Policy(
+                envs.observation_space.shape,
+                envs.action_space,
+                base=DRRLBase,
+                base_kwargs=base_kwargs)
+        elif args.attarchbaseline:
+            base_kwargs = {'recurrent': False,
+                           "w": 7, "h": 7, "pad": True,
+                           "n_f_conv1": 12, "n_f_conv2": 24,
+                           "baseline_mode": True,
+                           "n_baseMods": 2}
             actor_critic = Policy(
                 envs.observation_space.shape,
                 envs.action_space,
@@ -195,7 +205,8 @@ def main():
             torch.save([
                 j,
                 actor_critic,
-                # getattr(utils.get_vec_normalize(envs), 'ob_rms', None),
+                # getattr(utils.get_vec_normalize(envs), 'ob_rms', None), #input normalization not implemented with 2d
+                # input anyway
                 agent,
             ], os.path.join(save_path, args.env_name + ".pt"))
 
