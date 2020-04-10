@@ -41,49 +41,58 @@ def main():
     device = torch.device("cuda:0" if args.cuda else "cpu")
 
     envs = make_vec_envs(args.env_name, args.seed, args.num_processes,
-                         args.gamma, args.log_dir, device, False, num_frame_stack=1) #default is stacking 4 frames
-    if useAttArch:
-        base_kwargs = {'recurrent': False,
-                       "w": 7, "h": 7, "pad": True,
-                       "n_f_conv1": 12, "n_f_conv2": 24,
-                       "att_emb_size": 64, "n_heads": 2,
-                       "n_att_stack": 2, "n_fc_layers": 4,
-                       "baseline_mode": False}
-        actor_critic = Policy(
-            envs.observation_space.shape,
-            envs.action_space,
-            base=DRRLBase,
-            base_kwargs=base_kwargs)
-    else:
-        actor_critic = Policy(
-            envs.observation_space.shape,
-            envs.action_space,
-            base_kwargs={'recurrent': args.recurrent_policy})
-    actor_critic.to(device)
+                         args.gamma, args.log_dir, device, False, num_frame_stack=1)  # default is stacking 4 frames
+    save_path = os.path.join(args.save_dir, args.algo)
+    if os.path.isfile(os.path.join(save_path, args.env_name + ".pt")):
+        [start_upd, actor_critic, agent] = torch.load(os.path.join(save_path, args.env_name + ".pt"))
+        print(start_upd)
+        print(actor_critic)
+        print(agent)
 
-    if args.algo == 'a2c':
-        agent = algo.A2C_ACKTR(
-            actor_critic,
-            args.value_loss_coef,
-            args.entropy_coef,
-            lr=args.lr,
-            eps=args.eps,
-            alpha=args.alpha,
-            max_grad_norm=args.max_grad_norm)
-    elif args.algo == 'ppo':
-        agent = algo.PPO(
-            actor_critic,
-            args.clip_param,
-            args.ppo_epoch,
-            args.num_mini_batch,
-            args.value_loss_coef,
-            args.entropy_coef,
-            lr=args.lr,
-            eps=args.eps,
-            max_grad_norm=args.max_grad_norm)
-    elif args.algo == 'acktr':
-        agent = algo.A2C_ACKTR(
-            actor_critic, args.value_loss_coef, args.entropy_coef, acktr=True)
+    else:
+        start_upd = 0
+        if useAttArch:
+            base_kwargs = {'recurrent': False,
+                           "w": 7, "h": 7, "pad": True,
+                           "n_f_conv1": 12, "n_f_conv2": 24,
+                           "att_emb_size": 64, "n_heads": 2,
+                           "n_att_stack": 2, "n_fc_layers": 4,
+                           "baseline_mode": False}
+            actor_critic = Policy(
+                envs.observation_space.shape,
+                envs.action_space,
+                base=DRRLBase,
+                base_kwargs=base_kwargs)
+        else:
+            actor_critic = Policy(
+                envs.observation_space.shape,
+                envs.action_space,
+                base_kwargs={'recurrent': args.recurrent_policy})
+        actor_critic.to(device)
+
+        if args.algo == 'a2c':
+            agent = algo.A2C_ACKTR(
+                actor_critic,
+                args.value_loss_coef,
+                args.entropy_coef,
+                lr=args.lr,
+                eps=args.eps,
+                alpha=args.alpha,
+                max_grad_norm=args.max_grad_norm)
+        elif args.algo == 'ppo':
+            agent = algo.PPO(
+                actor_critic,
+                args.clip_param,
+                args.ppo_epoch,
+                args.num_mini_batch,
+                args.value_loss_coef,
+                args.entropy_coef,
+                lr=args.lr,
+                eps=args.eps,
+                max_grad_norm=args.max_grad_norm)
+        elif args.algo == 'acktr':
+            agent = algo.A2C_ACKTR(
+                actor_critic, args.value_loss_coef, args.entropy_coef, acktr=True)
 
     if args.gail:
         assert len(envs.observation_space.shape) == 1
@@ -93,7 +102,6 @@ def main():
         file_name = os.path.join(
             args.gail_experts_dir, "trajs_{}.pt".format(
                 args.env_name.split('-')[0].lower()))
-        
         expert_dataset = gail.ExpertDataset(
             file_name, num_trajectories=4, subsample_frequency=20)
         drop_last = len(expert_dataset) > args.gail_batch_size
@@ -116,7 +124,7 @@ def main():
     start = time.time()
     num_updates = int(
         args.num_env_steps) // args.num_steps // args.num_processes
-    for j in range(num_updates):
+    for j in range(start_upd, num_updates): #global iteration
 
         if args.use_linear_lr_decay:
             # decrease learning rate linearly
@@ -124,7 +132,8 @@ def main():
                 agent.optimizer, j, num_updates,
                 agent.optimizer.lr if args.algo == "acktr" else args.lr)
 
-        for step in range(args.num_steps):
+        for step in range(args.num_steps): #a batch update of num_steps for each num_process will be created in this
+            # loop
             # Sample actions
             with torch.no_grad():
                 value, action, action_log_prob, recurrent_hidden_states = actor_critic.act(
@@ -178,15 +187,16 @@ def main():
         # save for every interval-th episode or for the last epoch
         if (j % args.save_interval == 0
                 or j == num_updates - 1) and args.save_dir != "":
-            save_path = os.path.join(args.save_dir, args.algo)
             try:
                 os.makedirs(save_path)
             except OSError:
                 pass
 
             torch.save([
+                j,
                 actor_critic,
-                getattr(utils.get_vec_normalize(envs), 'ob_rms', None)
+                # getattr(utils.get_vec_normalize(envs), 'ob_rms', None),
+                agent,
             ], os.path.join(save_path, args.env_name + ".pt"))
 
         if j % args.log_interval == 0 and len(episode_rewards) > 1:
